@@ -142,9 +142,7 @@ export default function Home() {
       {/* Hero */}
       <section className="bg-grid border-b border-slate-200">
         <div className="mx-auto max-w-5xl px-6 py-16 text-center">
-          <span className="inline-block rounded-full bg-ink px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
-            API-orchestration pipeline · Dev + API Track · BTP
-          </span>
+
           <h1 className="mt-5 font-display text-5xl font-semibold text-ink sm:text-6xl">
             DocExplainer
           </h1>
@@ -213,9 +211,7 @@ export default function Home() {
       {/* Supported domains */}
       {!result && status === "idle" && (
         <section className="mx-auto max-w-5xl px-6 py-12">
-          <h2 className="text-center text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Pipeline routes to the right domain template automatically
-          </h2>
+
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
               { icon: Stethoscope, label: "Medical", desc: "Lab reports, prescriptions, discharge summaries" },
@@ -250,8 +246,7 @@ export default function Home() {
 
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto max-w-5xl px-6 py-8 text-center text-xs text-slate-500">
-          DocExplainer · BTP Minor Project · Development + API Track ·
-          Pipeline: pdf-parse → Gemini → Bhashini
+          DocExplainer · BTP Minor Project · Bittu Mandal · Mis - 112415048
         </div>
       </footer>
     </main>

@@ -71,10 +71,7 @@ export function LanguagePicker({ value, onChange }: Props) {
         })}
       </div>
 
-      <p className="mt-3 text-xs text-slate-500">
-        Pick any combination. More languages = slightly longer processing time —
-        each adds one extra API hop.
-      </p>
+
     </div>
   );
 }
