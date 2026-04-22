@@ -74,7 +74,7 @@ export default function Home() {
       setResult(json);
     } catch (e: any) {
       setStatus("error");
-      setError(e.message);
+      setError("We are experiencing high demand. Please try again in a moment.");
     }
   }
 
@@ -131,7 +131,7 @@ export default function Home() {
         },
       });
     } catch (e: any) {
-      setError(`Couldn't add ${lang}: ${e.message}`);
+      setError("We are experiencing high demand. Please try again in a moment.");
     } finally {
       setAddingLang(null);
     }
