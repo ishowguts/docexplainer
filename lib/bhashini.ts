@@ -12,6 +12,9 @@
 //  All Gemini calls go through the shared key-rotating client in
 //  lib/gemini-client.ts — if one API key hits its daily cap, the next
 //  key in the list takes over transparently.
+//
+//  IMPORTANT: Gemini translation uses a single batched JSON call per
+//  language (not one call per field) to stay within free-tier rate limits.
 // ---------------------------------------------------------------------------
 
 import { callGemini, GEMINI_TRANSLATE_CHAIN } from "./gemini-client";
@@ -31,26 +34,28 @@ const BHASHINI_LANGS: Record<string, string> = {
   bn: "bn",
 };
 
-// Per-language prompt for the Gemini translation path. Keeping these separate
-// lets us tailor tone for each target (natural Hindi vs. casual Hinglish).
-const GEMINI_TRANSLATE_PROMPT: Record<Exclude<LanguageCode, "en">, string> = {
+// Per-language system instruction for the Gemini batched-JSON translation.
+const GEMINI_TRANSLATE_INSTRUCTION: Record<Exclude<LanguageCode, "en">, string> = {
   hi:
-    "Translate the following English text to natural, conversational Hindi in " +
-    "Devanagari script. Explain medical/legal jargon in simple words rather " +
-    "than transliterating. Respond with Hindi text only, no preamble.",
+    "You are a translator. Translate ALL string values in the JSON below from " +
+    "English to natural, conversational Hindi in Devanagari script. " +
+    "Explain medical/legal jargon in simple words rather than transliterating. " +
+    "Do NOT translate JSON keys — only translate the string values. " +
+    "Return ONLY valid JSON, no preamble, no markdown fences.",
   hinglish:
-    "Translate the following English text into Hinglish — everyday Indian " +
-    "urban speech that mixes Hindi and English, written in Roman script. " +
-    "Keep common English words (doctor, report, contract, deposit) as-is. " +
-    "Be casual and conversational, like explaining to a friend over chai. " +
-    "Respond with Hinglish only, no preamble.",
+    "You are a translator. Translate ALL string values in the JSON below into " +
+    "Hinglish — everyday Indian urban speech that mixes Hindi and English, " +
+    "written in Roman script. Keep common English words (doctor, report, " +
+    "contract, deposit) as-is. Be casual and conversational, like explaining " +
+    "to a friend over chai. Do NOT translate JSON keys — only translate the " +
+    "string values. Return ONLY valid JSON, no preamble, no markdown fences.",
   bn:
-    "Translate the following English text to natural, conversational Bengali " +
-    "in Bengali script. Explain medical/legal jargon in simple words rather " +
-    "than transliterating. Respond with Bengali text only, no preamble.",
+    "You are a translator. Translate ALL string values in the JSON below from " +
+    "English to natural, conversational Bengali in Bengali script. " +
+    "Explain medical/legal jargon in simple words rather than transliterating. " +
+    "Do NOT translate JSON keys — only translate the string values. " +
+    "Return ONLY valid JSON, no preamble, no markdown fences.",
 };
-
-type TranslateFn = (text: string) => Promise<string>;
 
 function hasBhashini(): boolean {
   return Boolean(process.env.BHASHINI_API_KEY && process.env.BHASHINI_USER_ID);
@@ -82,79 +87,124 @@ async function bhashiniTranslate(text: string, targetLang: string): Promise<stri
   return json?.pipelineResponse?.[0]?.output?.[0]?.target ?? text;
 }
 
-// ---- Gemini path ----------------------------------------------------------
+// ---- Bhashini view translator (field-by-field) ----------------------------
 
-async function geminiTranslate(
-  text: string,
-  lang: Exclude<LanguageCode, "en">,
-  trace?: string[],
-): Promise<string> {
-  const raw = await callGemini(
-    `${GEMINI_TRANSLATE_PROMPT[lang]}\n\n${text}`,
-    { modelChain: GEMINI_TRANSLATE_CHAIN, trace },
-  );
-  return raw.trim();
-}
-
-// ---- Translator factory ---------------------------------------------------
-
-/**
- * Build a `translate(text)` function for one target language, plus a human
- * label describing which back-end it uses (for the fallbacksUsed metadata).
- */
-function translatorFor(
-  lang: Exclude<LanguageCode, "en">,
-  trace: string[],
-): {
-  fn: TranslateFn;
-  route: string;
-} {
-  // Hinglish is always Gemini — Bhashini has no Hinglish model.
-  if (lang === "hinglish") {
-    return { fn: (t) => geminiTranslate(t, lang, trace), route: "gemini:hinglish" };
-  }
-
-  // For hi/bn, prefer Bhashini; fall back to Gemini if no creds.
-  const bhashCode = BHASHINI_LANGS[lang];
-  if (bhashCode && hasBhashini()) {
-    return { fn: (t) => bhashiniTranslate(t, bhashCode), route: `bhashini:${lang}` };
-  }
-  return {
-    fn: (t) => geminiTranslate(t, lang, trace),
-    route: `gemini:${lang} (bhashini→gemini)`,
-  };
-}
-
-// ---- Translate one view ---------------------------------------------------
-
-async function translateView(
+async function translateViewBhashini(
   doc: ExplainedDoc,
-  translate: TranslateFn,
+  targetLang: string,
 ): Promise<TranslatedView> {
   const [title, summary, keyTerms, riskFlags, actionItems] = await Promise.all([
-    translate(doc.title),
-    translate(doc.summary),
+    bhashiniTranslate(doc.title, targetLang),
+    bhashiniTranslate(doc.summary, targetLang),
     Promise.all(
       doc.keyTerms.map(async (t) => ({
-        term: await translate(t.term),
-        meaning: await translate(t.meaning),
+        term: await bhashiniTranslate(t.term, targetLang),
+        meaning: await bhashiniTranslate(t.meaning, targetLang),
       })),
     ),
     Promise.all(
       doc.riskFlags.map(async (f) => ({
         level: f.level,
-        clause: await translate(f.clause),
-        reason: await translate(f.reason),
+        clause: await bhashiniTranslate(f.clause, targetLang),
+        reason: await bhashiniTranslate(f.reason, targetLang),
       })),
     ),
     Promise.all(
       doc.actionItems.map(async (a) => ({
-        action: await translate(a.action),
+        action: await bhashiniTranslate(a.action, targetLang),
         priority: a.priority,
       })),
     ),
   ]);
   return { title, summary, keyTerms, riskFlags, actionItems };
+}
+
+// ---- Gemini batched-JSON path ---------------------------------------------
+
+/**
+ * Strip markdown code fences from an LLM response so JSON.parse works.
+ */
+function extractJson(raw: string): string {
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  return (fenced ? fenced[1] : raw).trim();
+}
+
+/**
+ * Translate the entire ExplainedDoc in a SINGLE Gemini call by sending
+ * a JSON payload and asking the model to translate all string values.
+ * This avoids making 20-30 parallel API calls that exhaust free-tier rate limits.
+ */
+async function translateViewGemini(
+  doc: ExplainedDoc,
+  lang: Exclude<LanguageCode, "en">,
+  trace?: string[],
+): Promise<TranslatedView> {
+  // Build the payload — only the translatable fields, no metadata.
+  const payload = {
+    title: doc.title,
+    summary: doc.summary,
+    keyTerms: doc.keyTerms.map((t) => ({ term: t.term, meaning: t.meaning })),
+    riskFlags: doc.riskFlags.map((f) => ({
+      level: f.level,
+      clause: f.clause,
+      reason: f.reason,
+    })),
+    actionItems: doc.actionItems.map((a) => ({
+      action: a.action,
+      priority: a.priority,
+    })),
+  };
+
+  const prompt = `${GEMINI_TRANSLATE_INSTRUCTION[lang]}\n\n${JSON.stringify(payload, null, 2)}`;
+
+  const raw = await callGemini(prompt, {
+    modelChain: GEMINI_TRANSLATE_CHAIN,
+    trace,
+  });
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(extractJson(raw));
+  } catch {
+    // If the model returned invalid JSON, try a simpler single-field fallback
+    console.error("[translate] Gemini returned invalid JSON, using fallback structure");
+    return {
+      title: doc.title,
+      summary: doc.summary,
+      keyTerms: doc.keyTerms,
+      riskFlags: doc.riskFlags,
+      actionItems: doc.actionItems,
+    };
+  }
+
+  // Validate and coerce — never trust the LLM to return perfect structure
+  return {
+    title: String(parsed?.title ?? doc.title),
+    summary: String(parsed?.summary ?? doc.summary),
+    keyTerms: Array.isArray(parsed?.keyTerms)
+      ? parsed.keyTerms.map((t: any, i: number) => ({
+          term: String(t?.term ?? doc.keyTerms[i]?.term ?? ""),
+          meaning: String(t?.meaning ?? doc.keyTerms[i]?.meaning ?? ""),
+        }))
+      : doc.keyTerms,
+    riskFlags: Array.isArray(parsed?.riskFlags)
+      ? parsed.riskFlags.map((f: any, i: number) => ({
+          level: ["high", "medium", "low"].includes(f?.level)
+            ? f.level
+            : doc.riskFlags[i]?.level ?? "low",
+          clause: String(f?.clause ?? doc.riskFlags[i]?.clause ?? ""),
+          reason: String(f?.reason ?? doc.riskFlags[i]?.reason ?? ""),
+        }))
+      : doc.riskFlags,
+    actionItems: Array.isArray(parsed?.actionItems)
+      ? parsed.actionItems.map((a: any, i: number) => ({
+          action: String(a?.action ?? doc.actionItems[i]?.action ?? ""),
+          priority: ["now", "soon", "later"].includes(a?.priority)
+            ? a.priority
+            : doc.actionItems[i]?.priority ?? "soon",
+        }))
+      : doc.actionItems,
+  };
 }
 
 // ---- Public entry point ---------------------------------------------------
@@ -172,16 +222,39 @@ export async function translateDoc(
   // Translate each target language in parallel.
   await Promise.all(
     wanted.map(async (lang) => {
-      const { fn, route } = translatorFor(lang, fallbacks);
-      if (route.includes("bhashini→gemini")) fallbacks.push(route);
+      // Hinglish is always Gemini — Bhashini has no Hinglish model.
+      if (lang === "hinglish") {
+        fallbacks.push("gemini:hinglish");
+        try {
+          translations[lang] = await translateViewGemini(doc, lang, fallbacks);
+        } catch (err) {
+          console.error(`[translate] Gemini hinglish failed:`, err);
+          fallbacks.push("hinglish:failed");
+        }
+        return;
+      }
+
+      // For hi/bn, prefer Bhashini if creds are available.
+      const bhashCode = BHASHINI_LANGS[lang];
+      if (bhashCode && hasBhashini()) {
+        try {
+          translations[lang] = await translateViewBhashini(doc, bhashCode);
+          return;
+        } catch (err) {
+          // Bhashini failed — fall through to Gemini
+          console.error(`[translate] Bhashini ${lang} failed, falling back to Gemini:`, err);
+          fallbacks.push(`${lang}:bhashini-failed→gemini`);
+        }
+      } else {
+        fallbacks.push(`gemini:${lang} (bhashini→gemini)`);
+      }
+
+      // Gemini fallback (or primary if no Bhashini creds)
       try {
-        translations[lang] = await translateView(doc, fn);
+        translations[lang] = await translateViewGemini(doc, lang as Exclude<LanguageCode, "en">, fallbacks);
       } catch (err) {
-        // One failing language shouldn't kill the whole pipeline. Swap in a
-        // Gemini translation and record the degradation.
-        fallbacks.push(`${lang}:primary-failed→gemini`);
-        const gem = (t: string) => geminiTranslate(t, lang, fallbacks);
-        translations[lang] = await translateView(doc, gem);
+        console.error(`[translate] Gemini ${lang} also failed:`, err);
+        fallbacks.push(`${lang}:all-backends-failed`);
       }
     }),
   );

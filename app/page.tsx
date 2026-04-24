@@ -20,7 +20,7 @@ const STATUS_LABEL: Record<Status, string> = {
   uploading: "Uploading PDF…",
   parsing: "Extracting text…",
   explaining: "Asking Gemini for a plain-language breakdown…",
-  translating: "Translating via Bhashini…",
+  translating: "Translating via Gemini…",
   done: "Done",
   error: "Something went wrong",
 };
