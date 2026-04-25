@@ -118,7 +118,7 @@ export function ResultView({ result, onAddLanguage, addingLang, initialLang = "e
           </span>
         )}
         {result.meta.fallbacksUsed.length > 0 && (
-          <span className="rounded bg-amber-100 px-2 py-0.5 text-amber-800">
+          <span className="hidden rounded bg-amber-100 px-2 py-0.5 text-amber-800">
             fallback: {result.meta.fallbacksUsed.join(", ")}
           </span>
         )}
