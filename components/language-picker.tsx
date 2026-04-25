@@ -10,9 +10,9 @@ interface Props {
 // English is the baseline — always included in the output, never a toggle.
 // These are the translations the user can optionally request.
 const OPTIONAL: Array<{ code: Exclude<LanguageCode, "en">; hint: string }> = [
-  { code: "hi", hint: "Gemini" },
+  { code: "hi", hint: "Bhashini" },
   { code: "hinglish", hint: "Gemini · Roman script" },
-  { code: "bn", hint: "Gemini" },
+  { code: "bn", hint: "Bhashini" },
 ];
 
 export function LanguagePicker({ value, onChange }: Props) {

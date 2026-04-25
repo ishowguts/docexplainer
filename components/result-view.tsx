@@ -27,9 +27,11 @@ interface Props {
   onAddLanguage?: (lang: LanguageCode) => void;
   /** Which language is currently being fetched, if any (drives the spinner). */
   addingLang?: LanguageCode | null;
+  /** Which language tab to show by default when results first load. */
+  initialLang?: LanguageCode;
 }
 
-export function ResultView({ result, onAddLanguage, addingLang }: Props) {
+export function ResultView({ result, onAddLanguage, addingLang, initialLang = "en" }: Props) {
   const d = result.data;
 
   // Available language tabs: English (the ExplainedDoc itself) + whichever
@@ -44,7 +46,11 @@ export function ResultView({ result, onAddLanguage, addingLang }: Props) {
     return ALL_TARGET_LANGS.filter((l) => !availableLangs.includes(l));
   }, [availableLangs]);
 
-  const [lang, setLang] = useState<LanguageCode>("en");
+  // Default to the language the user selected before submitting, as long as
+  // it actually came back in the translations. Fall back to English otherwise.
+  const [lang, setLang] = useState<LanguageCode>(
+    availableLangs.includes(initialLang) ? initialLang : "en",
+  );
 
   // Resolve the view for the selected language. Fall back to English if the
   // requested translation is missing for any reason.

@@ -37,24 +37,36 @@ const BHASHINI_LANGS: Record<string, string> = {
 // Per-language system instruction for the Gemini batched-JSON translation.
 const GEMINI_TRANSLATE_INSTRUCTION: Record<Exclude<LanguageCode, "en">, string> = {
   hi:
-    "You are a translator. Translate ALL string values in the JSON below from " +
-    "English to natural, conversational Hindi in Devanagari script. " +
-    "Explain medical/legal jargon in simple words rather than transliterating. " +
-    "Do NOT translate JSON keys — only translate the string values. " +
-    "Return ONLY valid JSON, no preamble, no markdown fences.",
+    "You are a professional English-to-Hindi translator. I will give you a JSON object. " +
+    "You MUST translate EVERY string value in the JSON from English to natural, " +
+    "conversational Hindi in Devanagari script. This includes the title, summary, " +
+    "every term, every meaning, every clause, every reason, and every action field. " +
+    "Do NOT leave any string value in English. Do NOT skip any field. " +
+    "Explain medical/legal jargon in simple Hindi words rather than transliterating English words. " +
+    "Do NOT change JSON keys (title, summary, keyTerms, etc.) — only translate the VALUES. " +
+    "Do NOT change the values of 'level' or 'priority' fields — keep them as 'high', 'medium', 'low', 'now', 'soon', 'later'. " +
+    "Return ONLY the translated JSON object. No explanation, no preamble, no markdown code fences.",
   hinglish:
-    "You are a translator. Translate ALL string values in the JSON below into " +
-    "Hinglish — everyday Indian urban speech that mixes Hindi and English, " +
-    "written in Roman script. Keep common English words (doctor, report, " +
-    "contract, deposit) as-is. Be casual and conversational, like explaining " +
-    "to a friend over chai. Do NOT translate JSON keys — only translate the " +
-    "string values. Return ONLY valid JSON, no preamble, no markdown fences.",
+    "You are a professional translator. I will give you a JSON object. " +
+    "You MUST translate EVERY string value in the JSON into Hinglish — everyday Indian " +
+    "urban speech that mixes Hindi and English, written in Roman/Latin script. " +
+    "This includes the title, summary, every term, every meaning, every clause, " +
+    "every reason, and every action field. Do NOT leave any field untranslated. " +
+    "Keep common English words (doctor, report, contract, deposit, clause) as-is. " +
+    "Be casual and conversational, like explaining to a friend over chai. " +
+    "Do NOT change JSON keys — only translate the VALUES. " +
+    "Do NOT change the values of 'level' or 'priority' fields — keep them as 'high', 'medium', 'low', 'now', 'soon', 'later'. " +
+    "Return ONLY the translated JSON object. No explanation, no preamble, no markdown code fences.",
   bn:
-    "You are a translator. Translate ALL string values in the JSON below from " +
-    "English to natural, conversational Bengali in Bengali script. " +
-    "Explain medical/legal jargon in simple words rather than transliterating. " +
-    "Do NOT translate JSON keys — only translate the string values. " +
-    "Return ONLY valid JSON, no preamble, no markdown fences.",
+    "You are a professional English-to-Bengali translator. I will give you a JSON object. " +
+    "You MUST translate EVERY string value in the JSON from English to natural, " +
+    "conversational Bengali in Bengali script. This includes the title, summary, " +
+    "every term, every meaning, every clause, every reason, and every action field. " +
+    "Do NOT leave any string value in English. Do NOT skip any field. " +
+    "Explain medical/legal jargon in simple Bengali words rather than transliterating English words. " +
+    "Do NOT change JSON keys (title, summary, keyTerms, etc.) — only translate the VALUES. " +
+    "Do NOT change the values of 'level' or 'priority' fields — keep them as 'high', 'medium', 'low', 'now', 'soon', 'later'. " +
+    "Return ONLY the translated JSON object. No explanation, no preamble, no markdown code fences.",
 };
 
 function hasBhashini(): boolean {

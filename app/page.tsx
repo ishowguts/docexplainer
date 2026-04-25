@@ -20,7 +20,7 @@ const STATUS_LABEL: Record<Status, string> = {
   uploading: "Uploading PDF…",
   parsing: "Extracting text…",
   explaining: "Asking Gemini for a plain-language breakdown…",
-  translating: "Translating via Gemini…",
+  translating: "Translating via Bhashini…",
   done: "Done",
   error: "Something went wrong",
 };
@@ -240,6 +240,7 @@ export default function Home() {
             result={result}
             onAddLanguage={handleAddLanguage}
             addingLang={addingLang}
+            initialLang={targetLangs.length > 0 ? targetLangs[0] : "en"}
           />
         </section>
       )}
