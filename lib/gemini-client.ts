@@ -118,57 +118,67 @@ export async function callGemini(
   const skipModels = new Set<string>();
   let lastErr: unknown = null;
 
-  for (let keyIdx = 0; keyIdx < keys.length; keyIdx++) {
-    const client = new GoogleGenerativeAI(keys[keyIdx]);
-    let keyExhausted = false;
+  // We do up to 2 full passes. The second pass adds a cooldown delay in case
+  // the first pass hit rate-limits that will clear within a few seconds.
+  for (let pass = 0; pass < 2; pass++) {
+    if (pass > 0) {
+      // Cooldown before second pass — give RPM windows time to slide.
+      await sleep(3000);
+      if (opts.trace) opts.trace.push("gemini:retry-pass-2-after-cooldown");
+    }
 
-    for (const modelName of chain) {
-      if (skipModels.has(modelName)) continue;
+    for (let keyIdx = 0; keyIdx < keys.length; keyIdx++) {
+      const client = new GoogleGenerativeAI(keys[keyIdx]);
+      let keyExhausted = false;
 
-      const model = client.getGenerativeModel({ model: modelName });
+      for (const modelName of chain) {
+        if (skipModels.has(modelName)) continue;
 
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const result = await model.generateContent(prompt);
-          // Record any deviation from "first key, first model" in telemetry.
-          if (opts.trace && (keyIdx > 0 || modelName !== chain[0])) {
-            opts.trace.push(`gemini:key${keyIdx + 1}/${modelName}`);
-          }
-          return result.response.text();
-        } catch (err) {
-          lastErr = err;
+        const model = client.getGenerativeModel({ model: modelName });
 
-          // MODEL UNAVAILABLE (limit: 0) — this model won't work on any key.
-          // Blacklist it globally and move to next model on same key.
-          if (isModelUnavailableOnTier(err)) {
-            skipModels.add(modelName);
-            if (opts.trace) {
-              opts.trace.push(`gemini:${modelName}-unavailable-on-tier`);
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const result = await model.generateContent(prompt);
+            // Record any deviation from "first key, first model" in telemetry.
+            if (opts.trace && (keyIdx > 0 || modelName !== chain[0] || pass > 0)) {
+              opts.trace.push(`gemini:key${keyIdx + 1}/${modelName}${pass > 0 ? "/pass2" : ""}`);
             }
-            break; // break attempt loop → next model on same key
-          }
+            return result.response.text();
+          } catch (err) {
+            lastErr = err;
 
-          // KEY QUOTA / AUTH — this key is dead, rotate to next key.
-          if (isQuotaOrAuth(err)) {
-            if (opts.trace) {
-              opts.trace.push(`gemini:key${keyIdx + 1}-exhausted→rotating`);
+            // MODEL UNAVAILABLE (limit: 0) — this model won't work on any key.
+            // Blacklist it globally and move to next model on same key.
+            if (isModelUnavailableOnTier(err)) {
+              skipModels.add(modelName);
+              if (opts.trace) {
+                opts.trace.push(`gemini:${modelName}-unavailable-on-tier`);
+              }
+              break; // break attempt loop → next model on same key
             }
-            keyExhausted = true;
-            break; // break attempt loop
-          }
 
-          // TRANSIENT OVERLOAD — retry same (key, model) once with backoff.
-          if (isOverload(err) && attempt === 0) {
-            await sleep(1500);
-            continue;
-          }
+            // KEY QUOTA / AUTH — this key is dead, rotate to next key.
+            if (isQuotaOrAuth(err)) {
+              if (opts.trace) {
+                opts.trace.push(`gemini:key${keyIdx + 1}-exhausted→rotating`);
+              }
+              keyExhausted = true;
+              break; // break attempt loop
+            }
 
-          // Non-transient or second failure → drop to next model.
-          break;
+            // TRANSIENT OVERLOAD — retry same (key, model) once with backoff.
+            if (isOverload(err) && attempt === 0) {
+              await sleep(2500);
+              continue;
+            }
+
+            // Non-transient or second failure → drop to next model.
+            break;
+          }
         }
-      }
 
-      if (keyExhausted) break; // stop iterating models for this key
+        if (keyExhausted) break; // stop iterating models for this key
+      }
     }
   }
 

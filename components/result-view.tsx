@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LanguageCode, PipelineResult, TranslatedView } from "@/lib/types";
 import { LANGUAGE_LABELS } from "@/lib/types";
 import { RiskFlagChip } from "./risk-flag";
@@ -29,9 +29,11 @@ interface Props {
   addingLang?: LanguageCode | null;
   /** Which language tab to show by default when results first load. */
   initialLang?: LanguageCode;
+  /** Set by parent after a post-result translation completes — auto-switches view. */
+  lastAddedLang?: LanguageCode | null;
 }
 
-export function ResultView({ result, onAddLanguage, addingLang, initialLang = "en" }: Props) {
+export function ResultView({ result, onAddLanguage, addingLang, initialLang = "en", lastAddedLang }: Props) {
   const d = result.data;
 
   // Available language tabs: English (the ExplainedDoc itself) + whichever
@@ -51,6 +53,13 @@ export function ResultView({ result, onAddLanguage, addingLang, initialLang = "e
   const [lang, setLang] = useState<LanguageCode>(
     availableLangs.includes(initialLang) ? initialLang : "en",
   );
+
+  // Auto-switch to the most recently added translation (post-result "+" button).
+  useEffect(() => {
+    if (lastAddedLang && availableLangs.includes(lastAddedLang)) {
+      setLang(lastAddedLang);
+    }
+  }, [lastAddedLang, availableLangs]);
 
   // Resolve the view for the selected language. Fall back to English if the
   // requested translation is missing for any reason.

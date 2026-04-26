@@ -41,6 +41,9 @@ export default function Home() {
   // Per-language loading state for the post-result "+ Add language" button.
   const [addingLang, setAddingLang] = useState<LanguageCode | null>(null);
 
+  // Tracks the most recently added translation so ResultView can auto-switch.
+  const [lastAddedLang, setLastAddedLang] = useState<LanguageCode | null>(null);
+
   const isBusy =
     status === "uploading" ||
     status === "parsing" ||
@@ -74,7 +77,15 @@ export default function Home() {
       setResult(json);
     } catch (e: any) {
       setStatus("error");
-      setError("We are experiencing high demand. Please try again in a moment.");
+      const msg = e?.message ?? "Unknown error";
+      // Show the real error so users can report it, but keep it friendly
+      if (/quota|rate limit|429|exhausted/i.test(msg)) {
+        setError("All API keys are temporarily exhausted. Please wait 1-2 minutes and try again.");
+      } else if (/unsupported|domain/i.test(msg)) {
+        setError(msg);
+      } else {
+        setError(`Something went wrong: ${msg}`);
+      }
     }
   }
 
@@ -130,8 +141,15 @@ export default function Home() {
           ),
         },
       });
+      // Auto-switch ResultView to the newly translated language
+      setLastAddedLang(lang);
     } catch (e: any) {
-      setError("We are experiencing high demand. Please try again in a moment.");
+      const msg = e?.message ?? "Unknown error";
+      if (/quota|rate limit|429|exhausted/i.test(msg)) {
+        setError("All API keys are temporarily exhausted. Please wait 1-2 minutes and try again.");
+      } else {
+        setError(`Translation failed: ${msg}`);
+      }
     } finally {
       setAddingLang(null);
     }
@@ -241,6 +259,7 @@ export default function Home() {
             onAddLanguage={handleAddLanguage}
             addingLang={addingLang}
             initialLang={targetLangs.length > 0 ? targetLangs[0] : "en"}
+            lastAddedLang={lastAddedLang}
           />
         </section>
       )}
